@@ -2,6 +2,7 @@ import torch
 import torchaudio
 import argparse
 import os
+import torch.nn.functional as F
 
 from cnn import CNNNetwork
 from train import SAMPLE_RATE, NUM_SAMPLES
@@ -9,16 +10,17 @@ from train import SAMPLE_RATE, NUM_SAMPLES
 # Danh sách thể loại nhạc GTZAN
 class_mapping = [
     "blues", "classical", "country", "disco", "hiphop",
-    "jazz", "metal", "pop", "reggae", "rock"
+    "jazz","metal", "pop", "reggae", "rock",
 ]
 
 def predict(model, input_tensor, class_mapping):
     model.eval()
     with torch.no_grad():
         predictions = model(input_tensor)
-        predicted_index = predictions[0].argmax(0)
-        predicted = class_mapping[predicted_index]
-    return predicted
+        probabilities = F.softmax(predictions[0], dim=0)  # softmax để chuyển thành xác suất
+        predicted_index = probabilities.argmax().item()
+        predicted_label = class_mapping[predicted_index]
+    return predicted_label, probabilities
 
 def preprocess_audio(file_path, transformation, target_sample_rate, num_samples, device):
     signal, sr = torchaudio.load(file_path)
@@ -46,7 +48,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if not os.path.exists(args.file_path):
-        print("File không tồn tại.")
+        print(" File không tồn tại.")
         exit()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -65,5 +67,9 @@ if __name__ == "__main__":
     input_tensor = preprocess_audio(args.file_path, mel_spectrogram, SAMPLE_RATE, NUM_SAMPLES, device)
     input_tensor = input_tensor.unsqueeze(0)
 
-    predicted_class = predict(cnn, input_tensor, class_mapping)
-    print(f"Thể loại: '{predicted_class}'")
+    predicted_label, probabilities = predict(cnn, input_tensor, class_mapping)
+
+    print(f"\n Thể loại: '{predicted_label}'\n")
+    print(" Xác suất từng thể loại:")
+    for label, prob in zip(class_mapping, probabilities):
+        print(f"  {label:12s}: {prob.item() * 100:.2f}%")
